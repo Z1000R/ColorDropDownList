@@ -1,6 +1,6 @@
 ## 開発環境 Development Environment
-- Windows 10 Home 64bit  
-- Visual Studio 2019  
+- Windows 11 Home 64bit  
+- Visual Studio 2022  
 - Visual C++ (MFC : not used.)  
 
 ## ライセンス License

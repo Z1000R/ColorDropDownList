@@ -1,6 +1,7 @@
-#include <Windows.h>
-#include <commctrl.h>
+#include "framework.h"
 #include "resource.h"
+
+using namespace std;
 
 #if defined _M_IX86
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -11,8 +12,6 @@
 #else
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #endif
-
-#pragma comment(lib, "comctl32.lib")
 
 // 設定する色
 COLORREF rgbColoList[16] =
@@ -65,13 +64,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 		case IDC_GETCOLOR:
 		{
 			// 選択中のインデックス取得
-			LRESULT lResult = SendMessage(hCombo, (UINT)CB_GETCURSEL, 0, 0);
+			LRESULT index = SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
 			wchar_t szColor[16];
-			// DropDownList からではなく、カラー配列から設定値を取得する
-			wsprintf(szColor, L"%02X%02X%02X",
-				GetRValue(rgbColoList[lResult]),
-				GetGValue(rgbColoList[lResult]),
-				GetBValue(rgbColoList[lResult]));
+			// 選択中の項目のテキストを取得
+			SendMessageW(hCombo, CB_GETLBTEXT, index, (LPARAM)szColor);
 			MessageBox(hDlg, szColor, L"Color", MB_OK | MB_ICONINFORMATION);
 			return (INT_PTR)TRUE;
 		}
@@ -90,20 +86,20 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		hCombo = GetDlgItem(hDlg, IDC_COMBO1);
 
-		for (int i = 0; i < sizeof(rgbColoList) / sizeof(rgbColoList[0]); ++i)
+		// カラーコード追加
+		for (const auto& c : rgbColoList)
 		{
-			// 色項目の追加
-			// COLORREF値は、rgbColoListで管理するので、ここでは空文字列を設定し、
-			// 色描画時にカラーコードを書き込む
-			SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)L"");
+			wstring wsColor = format(L"{:02X}{:02X}{:02X}", GetRValue(c), GetGValue(c), GetBValue(c));
+			SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)wsColor.c_str());
 		}
+
 		// 初期選択項目
 		// wParam
 		//  Specifies the zero-based index of the string to select.
 		//  If this parameter is -1, any current selection in the list is removed and the edit control is cleared.
 		// lParam
 		//  This parameter is not used.
-		SendMessage(hCombo, CB_SETCURSEL, 0, 0);
+		SendMessageW(hCombo, CB_SETCURSEL, 0, 0);
 
 		return (INT_PTR)TRUE;
 	}
@@ -114,62 +110,73 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 		if (lpDis->CtlID != IDC_COMBO1)
 			return (INT_PTR)FALSE;
 
-		// 背景塗り潰し
-		DWORD dwBackColor = GetSysColor(COLOR_WINDOW);
-		HBRUSH hbrBack = CreateSolidBrush(dwBackColor);
-		FillRect(lpDis->hDC, &lpDis->rcItem, hbrBack);
-		DeleteObject(hbrBack);
-
 		// 項目が設定されていなければ、処理を抜ける
 		if (lpDis->itemID == -1)
 			return (INT_PTR)TRUE;
 
+		// カラーコードの表示オフセット
+		LONG lOffsetText = (lpDis->rcItem.bottom - lpDis->rcItem.top) * 3;
+
 		// 色塗り潰し領域設定
 		// 右側にカラーコードを表示させるための余白を作る
-		RECT rcColor{ lpDis->rcItem };
-		rcColor.top += 2;
-		rcColor.bottom -= 2;
-		rcColor.left += 2;
-		rcColor.right = (rcColor.bottom - rcColor.top) * 3;
+		RECT rcFill{ lpDis->rcItem };
+		rcFill.top += 2;
+		rcFill.bottom -= 2;
+		rcFill.left += 2;
+		rcFill.right = lOffsetText - 2;
 		HBRUSH hbrColor = CreateSolidBrush(rgbColoList[lpDis->itemID]);
-		FillRect(lpDis->hDC, &rcColor, hbrColor);
+		FillRect(lpDis->hDC, &rcFill, hbrColor);
 		DeleteObject(hbrColor);
 
-		// フォーカス項目
-		// ODS_SELECTED    0x0001
-		// ODS_FOCUS       0x0010
-		UINT uiState = ODS_FOCUS | ODS_SELECTED;
+		// カラーコード取得
+		wchar_t wcColorCode[32]{};
+		size_t cch = SendMessageW(lpDis->hwndItem, CB_GETLBTEXT, lpDis->itemID, (LPARAM)wcColorCode);
+		if (cch == 0 || cch == CB_ERR)
+			wcColorCode[0] = L'\0';
 
-		// ドロップダウン直後は
-		//	ODS_SELECTED	がON
-		//	ODS_FOCUS		がOFF
-		//	となっているため、いずれかのフラグがONであれば、フォーカス表示させる
-		DWORD dwTextColor;
-		if ((lpDis->itemState & uiState))
+		// 選択状態に合わせて表示する色を設定
+		COLORREF crForegroundPrev;
+		COLORREF crBackgroundPrev;
+		if (lpDis->itemState & ODS_SELECTED)
 		{
-			// 塗り潰した色の部分を避けて、右側のみをフォーカス表示（反転）させるため、left をオフセット
-			RECT rcFocus{ lpDis->rcItem };
-			rcFocus.left = (lpDis->rcItem.bottom - lpDis->rcItem.top) * 3 - 5;
-			HBRUSH hbrFocus = GetSysColorBrush(COLOR_HIGHLIGHT);
-			FillRect(lpDis->hDC, &rcFocus, hbrFocus);
-
-			dwTextColor = GetSysColor(COLOR_HIGHLIGHTTEXT);
+			crForegroundPrev = SetTextColor(lpDis->hDC, GetSysColor(COLOR_HIGHLIGHTTEXT));
+			crBackgroundPrev = SetBkColor(lpDis->hDC, GetSysColor(COLOR_HIGHLIGHT));
 		}
 		else
-			dwTextColor = GetSysColor(COLOR_WINDOWTEXT);
+		{
+			crForegroundPrev = SetTextColor(lpDis->hDC, GetSysColor(COLOR_WINDOWTEXT));
+			crBackgroundPrev = SetBkColor(lpDis->hDC, GetSysColor(COLOR_WINDOW));
+		}
 
-		// カラーコード
-		wchar_t szColor[16];
-		wsprintf(szColor, L"%02X%02X%02X",
-			GetRValue(rgbColoList[lpDis->itemID]),
-			GetGValue(rgbColoList[lpDis->itemID]),
-			GetBValue(rgbColoList[lpDis->itemID]));
-		SetTextColor(lpDis->hDC, dwTextColor);
-		SetBkMode(lpDis->hDC, TRANSPARENT);
-		// 塗り潰した色の右側に表示するため、left をオフセットした位置に書き込む
+		// カラーコードを表示する座標を求める
+		TEXTMETRIC tm;
+		GetTextMetrics(lpDis->hDC, &tm);
+		int x = lOffsetText + 5;
+		int y = (lpDis->rcItem.bottom + lpDis->rcItem.top - tm.tmHeight) / 2;
+
+		// ETO_CLIPPED、ETO_OPAQUEが適用される領域
+		//   選択時の背景色が、表示されている色部分と重ならないように、
+		//   left をオフセットさせる
 		RECT rcText{ lpDis->rcItem };
-		rcText.left = (lpDis->rcItem.bottom - lpDis->rcItem.top) * 3;
-		DrawText(lpDis->hDC, szColor, -1, &rcText, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+		rcText.left = lOffsetText;
+
+		// 現在選択されているフォント、背景色、およびテキストの色を使用してテキストを描画します。
+		// ETO_CLIPPED : テキストが四角形にクリップされます。
+		// ETO_OPAQUE  : 現在の背景色を使用して四角形を塗りつぶす必要があります。
+		ExtTextOutW(lpDis->hDC,
+			x, y,
+			ETO_CLIPPED | ETO_OPAQUE,
+			&rcText,
+			wcColorCode, (UINT)cch, nullptr);
+
+		// 設定した色を元に戻す
+		SetTextColor(lpDis->hDC, crForegroundPrev);
+		SetBkColor(lpDis->hDC, crBackgroundPrev);
+
+		// フォーカスがあれば、FocusRect を表示する
+		if (lpDis->itemState & ODS_FOCUS)
+			DrawFocusRect(lpDis->hDC, &rcText);
+
 		return (INT_PTR)TRUE;
 	}
 	default:
