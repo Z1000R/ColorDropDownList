@@ -79,11 +79,6 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 	case WM_INITDIALOG:
 	{
-		INITCOMMONCONTROLSEX ic;
-		ic.dwICC = ICC_COOL_CLASSES;
-		ic.dwSize = sizeof(INITCOMMONCONTROLSEX);
-		InitCommonControlsEx(&ic);
-
 		hCombo = GetDlgItem(hDlg, IDC_COMBO1);
 
 		// カラーコード追加
