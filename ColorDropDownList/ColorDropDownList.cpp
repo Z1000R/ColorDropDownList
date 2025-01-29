@@ -107,7 +107,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		// 項目が設定されていなければ、処理を抜ける
 		if (lpDis->itemID == -1)
-			return (INT_PTR)TRUE;
+			return (INT_PTR)FALSE;
 
 		// カラーコードの表示オフセット
 		LONG lOffsetText = (lpDis->rcItem.bottom - lpDis->rcItem.top) * 3;

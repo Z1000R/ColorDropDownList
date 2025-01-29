@@ -163,6 +163,9 @@
     <Manifest>
       <EnableDpiAwareness>true</EnableDpiAwareness>
     </Manifest>
+    <PostBuildEvent>
+      <Command>copy "$(TargetPath)" "$(SolutionDir)Binary\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ColorDropDownList.cpp" />
